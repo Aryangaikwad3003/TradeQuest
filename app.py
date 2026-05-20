@@ -1,20 +1,62 @@
 import os
-import sqlite3
 import random
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, g, flash
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key_for_tradequest"
 DATABASE = 'quiz.db'
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
+class DBWrapper:
+    def __init__(self, conn, is_postgres):
+        self.conn = conn
+        self.is_postgres = is_postgres
+
+    def cursor(self):
+        return CursorWrapper(self.conn.cursor(), self.is_postgres)
+
+    def commit(self):
+        if not self.is_postgres:
+            self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+class CursorWrapper:
+    def __init__(self, cursor, is_postgres):
+        self.cursor = cursor
+        self.is_postgres = is_postgres
+
+    def execute(self, query, params=()):
+        if self.is_postgres:
+            query = query.replace('?', '%s')
+        return self.cursor.execute(query, params)
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA foreign_keys = ON')
+        db_url = os.environ.get('DATABASE_URL')
+        if db_url and db_url.startswith('postgres'):
+            import psycopg
+            from psycopg.rows import dict_row
+            conn = psycopg.connect(db_url, row_factory=dict_row, autocommit=True)
+            db = g._database = DBWrapper(conn, True)
+        else:
+            import sqlite3
+            conn = sqlite3.connect(DATABASE)
+            conn.row_factory = sqlite3.Row
+            conn.execute('PRAGMA foreign_keys = ON')
+            db = g._database = DBWrapper(conn, False)
     return db
 
 @app.teardown_appcontext
@@ -28,19 +70,23 @@ def init_db():
         db = get_db()
         cursor = db.cursor()
         
-        cursor.execute('''
+        is_pg = db.is_postgres
+        pk_syntax = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS quizzes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_syntax},
                 title TEXT NOT NULL,
                 pass_percentage REAL NOT NULL,
                 is_active INTEGER DEFAULT 0,
+                max_attempts INTEGER DEFAULT 3,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
-        cursor.execute('''
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_syntax},
                 quiz_id INTEGER NOT NULL,
                 question_text TEXT NOT NULL,
                 option_a TEXT NOT NULL,
@@ -52,9 +98,9 @@ def init_db():
             )
         ''')
 
-        cursor.execute('''
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS attempts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {pk_syntax},
                 quiz_id INTEGER NOT NULL,
                 user_name TEXT NOT NULL,
                 employee_id TEXT NOT NULL,
@@ -64,29 +110,28 @@ def init_db():
                 passed INTEGER NOT NULL,
                 attempt_number INTEGER NOT NULL,
                 quiz_attempt_id INTEGER,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
             )
         ''')
         
-        # Add max_attempts column for existing databases
-        try:
-            cursor.execute('ALTER TABLE quizzes ADD COLUMN max_attempts INTEGER DEFAULT 3')
-        except sqlite3.OperationalError:
-            pass
+        if not is_pg:
+            try:
+                cursor.cursor.execute('ALTER TABLE quizzes ADD COLUMN max_attempts INTEGER DEFAULT 3')
+            except Exception:
+                pass
 
-        # Add quiz_attempt_id column for existing databases
-        try:
-            cursor.execute('ALTER TABLE attempts ADD COLUMN quiz_attempt_id INTEGER')
-        except sqlite3.OperationalError:
-            pass
+            try:
+                cursor.cursor.execute('ALTER TABLE attempts ADD COLUMN quiz_attempt_id INTEGER')
+            except Exception:
+                pass
 
         # Backfill quiz_attempt_id for existing attempts
         cursor.execute('SELECT id, quiz_id FROM attempts WHERE quiz_attempt_id IS NULL ORDER BY timestamp ASC, id ASC')
         null_attempts = cursor.fetchall()
         for att in null_attempts:
-            cursor.execute('SELECT IFNULL(MAX(quiz_attempt_id), 0) FROM attempts WHERE quiz_id = ?', (att['quiz_id'],))
-            current_max = cursor.fetchone()[0]
+            cursor.execute('SELECT COALESCE(MAX(quiz_attempt_id), 0) as max_id FROM attempts WHERE quiz_id = ?', (att['quiz_id'],))
+            current_max = cursor.fetchone()['max_id']
             cursor.execute('UPDATE attempts SET quiz_attempt_id = ? WHERE id = ?', (current_max + 1, att['id']))
 
         db.commit()
@@ -210,8 +255,8 @@ def submit_quiz(quiz_id):
     attempt_num = session.get(f'attempt_{quiz_id}', 1)
 
     # Determine the quiz_attempt_id
-    cursor.execute('SELECT IFNULL(MAX(quiz_attempt_id), 0) FROM attempts WHERE quiz_id = ?', (quiz_id,))
-    quiz_attempt_id = cursor.fetchone()[0] + 1
+    cursor.execute('SELECT COALESCE(MAX(quiz_attempt_id), 0) as max_id FROM attempts WHERE quiz_id = ?', (quiz_id,))
+    quiz_attempt_id = cursor.fetchone()['max_id'] + 1
 
     cursor.execute('''
         INSERT INTO attempts (quiz_id, user_name, employee_id, score, total_questions, percentage, passed, attempt_number, quiz_attempt_id)
