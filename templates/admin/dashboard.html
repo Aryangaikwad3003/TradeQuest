@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+    <h2>Quiz Management Dashboard</h2>
+    <a href="{{ url_for('create_quiz') }}" class="btn btn-primary">+ Create New Quiz</a>
+</div>
+
+<div class="card" style="padding: 1.5rem;">
+    {% if quizzes %}
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Questions</th>
+                    <th>Pass %</th>
+                    <th>Max Attempts</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for quiz in quizzes %}
+                <tr>
+                    <td style="font-weight: 500;">{{ quiz.title }}</td>
+                    <td>{{ quiz.num_questions }}</td>
+                    <td>{{ quiz.pass_percentage }}%</td>
+                    <td>{{ quiz.max_attempts }}</td>
+                    <td>
+                        <form action="{{ url_for('toggle_quiz', quiz_id=quiz.id) }}" method="POST" style="margin:0;">
+                            <button type="submit" style="background:none; border:none; padding:0; cursor:pointer;">
+                                {% if quiz.is_active %}
+                                    <span class="badge badge-active" title="Click to deactivate">Active</span>
+                                {% else %}
+                                    <span class="badge badge-inactive" title="Click to activate">Inactive</span>
+                                {% endif %}
+                            </button>
+                        </form>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('manage_questions', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Edit/Add Questions</a>
+                            <a href="{{ url_for('quiz_results', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">View Results</a>
+                            <form action="{{ url_for('delete_quiz', quiz_id=quiz.id) }}" method="POST" style="margin:0; display:inline;">
+                                <button type="submit" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-center" style="margin: 2rem 0;">No quizzes created yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - Quiz Results{% endblock %}
+
+{% block content %}
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+<div class="flex justify-between items-center mb-2">
+    <h2>Results: {{ quiz.title }}</h2>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+<!-- Leaderboard Section -->
+<div class="card mb-4" id="leaderboard-container" style="padding: 1.5rem; background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);">
+    <div class="flex justify-between items-center mb-2">
+        <h3>Top Performers 🏆</h3>
+        <div>
+            <button class="btn btn-primary" id="download-btn" onclick="downloadLeaderboard()">Download Snapshot</button>
+            <button class="btn" id="share-btn" onclick="shareToWhatsApp()" style="background-color: #25D366; color: white; margin-left: 0.5rem;">Share on WhatsApp</button>
+        </div>
+    </div>
+    <div class="leaderboard-list">
+        {% for entry in leaderboard %}
+            {% set rank = loop.index %}
+            <div class="leaderboard-row rank-{{ rank }}">
+                <div class="rank-badge">{{ rank }}</div>
+                <div class="user-info">
+                    <strong>{{ entry.user_name }}</strong> ({{ entry.employee_id }})
+                </div>
+                <div class="score-info">
+                    Score: {{ entry.score }} <small>({{ entry.percentage|round(1) }}%)</small> <br>
+                    <small style="color:var(--text-muted); font-weight:normal;">Attempt #{{ entry.attempt_number }}</small>
+                </div>
+            </div>
+        {% else %}
+            <p>No data for leaderboard yet.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<h3>All Attempts</h3>
+<div class="card" style="padding: 1.5rem;">
+    {% if attempts %}
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Attempt ID</th>
+                    <th>Date & Time</th>
+                    <th>User Name</th>
+                    <th>Employee ID</th>
+                    <th>Attempt #</th>
+                    <th>Score</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attempt in attempts %}
+                <tr>
+                    <td>#{{ attempt.quiz_attempt_id }}</td>
+                    <td>{{ attempt.timestamp[:16] }}</td>
+                    <td style="font-weight: 500;">{{ attempt.user_name }}</td>
+                    <td>{{ attempt.employee_id }}</td>
+                    <td>{{ attempt.attempt_number }}</td>
+                    <td>
+                        {{ attempt.score }}/{{ attempt.total_questions }} 
+                        <br><small style="color:var(--text-muted)">({{ attempt.percentage|round(1) }}%)</small>
+                    </td>
+                    <td>
+                        {% if attempt.passed %}
+                            <span class="badge badge-pass">PASS</span>
+                        {% else %}
+                            <span class="badge badge-fail">FAIL</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-center" style="margin: 2rem 0;">No attempts recorded for this quiz yet.</p>
+    {% endif %}
+</div>
+
+<script>
+function downloadLeaderboard() {
+    const container = document.getElementById('leaderboard-container');
+    const downloadBtn = document.getElementById('download-btn');
+    const shareBtn = document.getElementById('share-btn');
+    
+    // Hide buttons temporarily so they don't appear in the image
+    downloadBtn.style.display = 'none';
+    shareBtn.style.display = 'none';
+    
+    html2canvas(container).then(canvas => {
+        // Restore buttons
+        downloadBtn.style.display = 'inline-block';
+        shareBtn.style.display = 'inline-block';
+        
+        // Trigger download
+        const link = document.createElement('a');
+        link.download = 'leaderboard_{{ quiz.id }}.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(err => {
+        console.error("Error capturing leaderboard:", err);
+        downloadBtn.style.display = 'inline-block';
+        shareBtn.style.display = 'inline-block';
+    });
+}
+
+async function shareToWhatsApp() {
+    const container = document.getElementById('leaderboard-container');
+    const downloadBtn = document.getElementById('download-btn');
+    const shareBtn = document.getElementById('share-btn');
+    
+    // Hide buttons temporarily so they don't appear in the image
+    downloadBtn.style.display = 'none';
+    shareBtn.style.display = 'none';
+    
+    try {
+        const canvas = await html2canvas(container);
+        
+        // Restore buttons
+        downloadBtn.style.display = 'inline-block';
+        shareBtn.style.display = 'inline-block';
+        
+        canvas.toBlob(async (blob) => {
+            try {
+                const item = new ClipboardItem({ "image/png": blob });
+                await navigator.clipboard.write([item]);
+                
+                alert("🏆 Leaderboard copied to clipboard!\n\nOpening WhatsApp Web now... Just press Ctrl+V to paste the image in your chat.");
+                
+                const text = encodeURIComponent("Check out the latest leaderboard for {{ quiz.title }}! 🚀");
+                window.open(`https://web.whatsapp.com/send?text=${text}`, "_blank");
+            } catch (err) {
+                console.error("Clipboard copy failed:", err);
+                alert("Could not copy to clipboard automatically. Your browser might not support this feature.\n\nPlease use the 'Download Snapshot' button instead.");
+            }
+        }, 'image/png');
+        
+    } catch (err) {
+        console.error("Error capturing leaderboard:", err);
+        downloadBtn.style.display = 'inline-block';
+        shareBtn.style.display = 'inline-block';
+        alert("Failed to capture leaderboard snapshot.");
+    }
+}
+</script>
+{% endblock %}

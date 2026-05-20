@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - {{ quiz.title }}{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+    <h2>{{ quiz.title }}</h2>
+    <span class="badge badge-active">Pass Percentage: {{ quiz.pass_percentage }}%</span>
+</div>
+
+<p>Candidate: <strong>{{ session.get('user_name') }}</strong> ({{ session.get('employee_id') }}) | Attempt #{{ session.get('attempt_' ~ quiz.id|string, 1) }}</p>
+
+<form id="quizForm" action="{{ url_for('submit_quiz', quiz_id=quiz.id) }}" method="POST">
+    
+    {% for q in questions %}
+    {% set outer_idx = loop.index0 %}
+    <div class="card question-block" id="question_{{ outer_idx }}" {% if not loop.first %}style="display: none;"{% endif %}>
+        <div class="question-text">{{ loop.index }}. {{ q.question_text }}</div>
+        
+        <div class="options-group" id="options_{{ outer_idx }}">
+            {% for orig_key, text in q.shuffled_options %}
+            <label class="option-label" id="label_{{ outer_idx }}_{{ orig_key }}" style="display: block; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem;">
+                <input type="radio" name="question_{{ q.id }}" value="{{ orig_key }}" data-correct="{{ q.correct_option }}">
+                <span>{{ ['A','B','C','D'][loop.index0] }}) {{ text }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        
+        <div class="feedback-msg" id="feedback_{{ outer_idx }}" style="margin-top: 1rem; font-weight: bold; display: none;"></div>
+
+        <div class="mt-4 flex justify-between" style="display: flex; justify-content: space-between;">
+            <button type="button" class="btn btn-secondary check-btn" onclick="checkAnswer({{ outer_idx }})">Check Answer</button>
+            <button type="button" class="btn btn-primary next-btn" onclick="nextQuestion({{ outer_idx }})" style="display: none;">Next / Skip</button>
+            {% if loop.last %}
+            <button type="submit" class="btn btn-primary submit-btn" id="submit_btn" style="display: none;">Submit Quiz</button>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+        <div class="alert alert-error">No questions available for this quiz.</div>
+    {% endfor %}
+
+</form>
+
+<script>
+    const totalQuestions = {{ questions|length }};
+    
+    function checkAnswer(index) {
+        const block = document.getElementById('question_' + index);
+        const inputs = block.querySelectorAll('input[type="radio"]');
+        let selected = null;
+        let correctValue = null;
+        
+        inputs.forEach(input => {
+            if (input.checked) selected = input.value;
+            correctValue = input.getAttribute('data-correct');
+        });
+        
+        const feedback = document.getElementById('feedback_' + index);
+        const checkBtn = block.querySelector('.check-btn');
+        const nextBtn = block.querySelector('.next-btn');
+        const submitBtn = block.querySelector('.submit-btn');
+        
+        if (!selected) {
+            alert('Please select an option first.');
+            return;
+        }
+
+        // Disable inputs so they can't change their answer
+        inputs.forEach(input => input.disabled = true);
+        
+        checkBtn.style.display = 'none';
+        
+        if (index === totalQuestions - 1) {
+            if (submitBtn) submitBtn.style.display = 'inline-block';
+        } else {
+            nextBtn.style.display = 'inline-block';
+        }
+        
+        feedback.style.display = 'block';
+
+        if (selected === correctValue) {
+            feedback.style.color = '#28a745'; // success
+            feedback.innerText = 'Correct!';
+        } else {
+            feedback.style.color = '#dc3545'; // danger
+            feedback.innerText = 'Incorrect!';
+            
+            // Highlight the correct option
+            const correctLabel = document.getElementById('label_' + index + '_' + correctValue);
+            if (correctLabel) {
+                correctLabel.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
+                correctLabel.style.border = '1px solid #28a745';
+            }
+        }
+    }
+    
+    function nextQuestion(index) {
+        document.getElementById('question_' + index).style.display = 'none';
+        const nextIndex = index + 1;
+        const nextBlock = document.getElementById('question_' + nextIndex);
+        if (nextBlock) {
+            nextBlock.style.display = 'block';
+        }
+    }
+
+    // Re-enable inputs before submitting so the data is sent
+    document.getElementById('quizForm').addEventListener('submit', function() {
+        const inputs = this.querySelectorAll('input[type="radio"]');
+        inputs.forEach(input => input.disabled = false);
+    });
+</script>
+{% endblock %}

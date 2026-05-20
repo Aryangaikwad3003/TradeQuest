@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - Results{% endblock %}
+
+{% block content %}
+<div class="card result-card">
+    
+    {% if passed %}
+        <div style="margin-bottom: 2rem;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--success-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <h2>Congratulations! You passed.</h2>
+        <p>You have successfully completed <strong>{{ quiz.title }}</strong>.</p>
+    {% else %}
+        <div style="margin-bottom: 2rem;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--danger-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x-circle"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        </div>
+        <h2>You did not meet the passing score.</h2>
+        <p>Please review and try again.</p>
+    {% endif %}
+
+    <div class="score-display {% if not passed %}score-fail{% endif %}">
+        {{ percentage|round(1) }}%
+    </div>
+    
+    <p>You scored <strong>{{ score }}</strong> out of <strong>{{ total_questions }}</strong>.</p>
+    <p class="mb-2">Required to pass: {{ quiz.pass_percentage }}%</p>
+
+    <div class="mt-4 flex justify-center" style="gap: 1rem; justify-content: center;">
+        {% if not passed %}
+            {% if max_attempts and attempt_num >= max_attempts %}
+                <p class="text-danger" style="margin-bottom: 0; align-self: center; font-weight: bold;">Maximum attempts reached.</p>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Go to Home</a>
+            {% else %}
+                <form action="{{ url_for('reattempt_quiz', quiz_id=quiz.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-primary">Reattempt Quiz</button>
+                </form>
+            {% endif %}
+        {% else %}
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Go to Home</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

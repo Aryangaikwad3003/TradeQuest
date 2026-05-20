@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - Admin Login{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 4rem auto;">
+    <div class="text-center mb-2">
+        <h2 style="color: var(--primary-color);">Admin Access</h2>
+        <p>Please enter the administrator password.</p>
+    </div>
+
+    <form action="{{ url_for('admin_login') }}" method="POST">
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Login</button>
+    </form>
+    <div class="text-center mt-2">
+        <a href="{{ url_for('index') }}" style="color: var(--text-muted); font-size: 0.875rem;">Return to Home</a>
+    </div>
+</div>
+{% endblock %}

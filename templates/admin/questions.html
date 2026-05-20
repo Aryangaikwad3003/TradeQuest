@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}TradeQuest - Manage Questions{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+    <h2>Manage Questions: {{ quiz.title }}</h2>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+{% if questions %}
+<div class="card" style="margin-bottom: 2rem;">
+    <h3>Existing Questions ({{ questions|length }})</h3>
+    <div style="max-height: 400px; overflow-y: auto; padding-right: 1rem;">
+        {% for q in questions %}
+        <div style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <strong>Q: {{ q.question_text }}</strong>
+            <div style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <div>A: {{ q.option_a }} {% if q.correct_option == 'A' %}<span style="color:var(--success-color)">✓ Correct</span>{% endif %}</div>
+                <div>B: {{ q.option_b }} {% if q.correct_option == 'B' %}<span style="color:var(--success-color)">✓ Correct</span>{% endif %}</div>
+                <div>C: {{ q.option_c }} {% if q.correct_option == 'C' %}<span style="color:var(--success-color)">✓ Correct</span>{% endif %}</div>
+                <div>D: {{ q.option_d }} {% if q.correct_option == 'D' %}<span style="color:var(--success-color)">✓ Correct</span>{% endif %}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h3>Add New Questions</h3>
+    <form action="{{ url_for('manage_questions', quiz_id=quiz.id) }}" method="POST" id="questions-form">
+        <div id="questions-container">
+            <!-- First question block -->
+            <div class="dynamic-question">
+                <div class="form-group">
+                    <label>Question Text</label>
+                    <input type="text" name="question_text[]" required placeholder="Enter the question">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>Option A</label>
+                        <input type="text" name="option_a[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option B</label>
+                        <input type="text" name="option_b[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option C</label>
+                        <input type="text" name="option_c[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option D</label>
+                        <input type="text" name="option_d[]" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Correct Option</label>
+                    <select name="correct_option[]" required>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-center mt-2">
+            <button type="button" class="btn btn-secondary" onclick="addQuestion()">+ Add Another Question</button>
+            <button type="submit" class="btn btn-primary">Save All Questions</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function addQuestion() {
+        const container = document.getElementById('questions-container');
+        const template = `
+            <div class="dynamic-question">
+                <div class="flex justify-between items-center mb-2">
+                    <label style="margin:0;">New Question</label>
+                    <button type="button" onclick="this.parentElement.parentElement.remove()" style="background:none; border:none; color:var(--danger-color); cursor:pointer;">Remove</button>
+                </div>
+                <div class="form-group">
+                    <input type="text" name="question_text[]" required placeholder="Enter the question">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>Option A</label>
+                        <input type="text" name="option_a[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option B</label>
+                        <input type="text" name="option_b[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option C</label>
+                        <input type="text" name="option_c[]" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Option D</label>
+                        <input type="text" name="option_d[]" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Correct Option</label>
+                    <select name="correct_option[]" required>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', template);
+    }
+</script>
+{% endblock %}

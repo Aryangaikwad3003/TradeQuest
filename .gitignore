@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+quiz.db
+.system_generated/
