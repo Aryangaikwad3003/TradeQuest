@@ -64,7 +64,7 @@
                 {% for attempt in attempts %}
                 <tr>
                     <td>#{{ attempt.quiz_attempt_id }}</td>
-                    <td>{{ (attempt.timestamp|string)[:16] }}</td>
+                    <td>{{ attempt.timestamp|format_ist }}</td>
                     <td style="font-weight: 500;">{{ attempt.user_name }}</td>
                     <td>{{ attempt.employee_id }}</td>
                     <td>{{ attempt.attempt_number }}</td>

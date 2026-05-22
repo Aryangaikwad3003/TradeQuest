@@ -3,6 +3,7 @@ import random
 import csv
 import io
 from functools import wraps
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, g, flash, Response, jsonify
 from dotenv import load_dotenv
 
@@ -158,6 +159,26 @@ def admin_required(f):
             return redirect(url_for('admin_login'))
         return f(*args, **kwargs)
     return decorated_function
+
+# --- Template Filters ---
+@app.template_filter('format_ist')
+def format_ist(value):
+    if not value:
+        return ""
+    try:
+        val_str = str(value)
+        if '.' in val_str:
+            val_str = val_str.split('.')[0]
+            
+        try:
+            utc_dt = datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            utc_dt = datetime.strptime(val_str[:16], '%Y-%m-%d %H:%M')
+            
+        ist_dt = utc_dt + timedelta(hours=5, minutes=30)
+        return ist_dt.strftime('%Y-%m-%d %H:%M')
+    except Exception as e:
+        return f"ERR: {e} | VAL: {value}"
 
 # ==========================================
 # USER ROUTES
