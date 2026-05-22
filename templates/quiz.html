@@ -3,6 +3,14 @@
 {% block title %}TradeQuest - {{ quiz.title }}{% endblock %}
 
 {% block content %}
+<!-- Audio & Animation Assets -->
+<audio id="bgMusic" src="{{ url_for('static', filename='new_bgmusic.mp3') }}" loop autoplay></audio>
+<audio id="yaySound" src="{{ url_for('static', filename='yay.mp3') }}"></audio>
+
+<div id="hoorayAnimation" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none;">
+    <img src="{{ url_for('static', filename='Hooray animation.svg') }}" style="width: 400px; height: 400px; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.2));">
+</div>
+
 <div class="flex justify-between items-center mb-2">
     <h2>{{ quiz.title }}</h2>
     <span class="badge badge-active">Pass Percentage: {{ quiz.pass_percentage }}%</span>
@@ -82,6 +90,20 @@
         if (selected === correctValue) {
             feedback.style.color = '#28a745'; // success
             feedback.innerText = 'Correct!';
+            
+            // Play Yay sound and show animation
+            const yaySound = document.getElementById('yaySound');
+            yaySound.currentTime = 0; // Reset sound so it can play rapidly
+            yaySound.play().catch(e => console.log('Audio blocked:', e));
+            
+            const anim = document.getElementById('hoorayAnimation');
+            anim.style.display = 'block';
+            
+            // Hide the animation after 2.5 seconds
+            setTimeout(() => {
+                anim.style.display = 'none';
+            }, 2500);
+
         } else {
             feedback.style.color = '#dc3545'; // danger
             feedback.innerText = 'Incorrect!';
@@ -109,5 +131,13 @@
         const inputs = this.querySelectorAll('input[type="radio"]');
         inputs.forEach(input => input.disabled = false);
     });
+
+    // Start background music as soon as the user interacts with the page (fallback for autoplay restrictions)
+    document.body.addEventListener('click', function() {
+        const bg = document.getElementById('bgMusic');
+        if (bg.paused) {
+            bg.play().catch(e => console.log('Autoplay blocked:', e));
+        }
+    }, { once: true });
 </script>
 {% endblock %}

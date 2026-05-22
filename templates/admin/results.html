@@ -5,10 +5,15 @@
 {% block content %}
 <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
-<div class="flex justify-between items-center mb-2">
-    <h2>Results: {{ quiz.title }}</h2>
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
-</div>
+    <div class="flex justify-between items-center mb-4">
+        <h2>Results for: {{ quiz.title }}</h2>
+        <div>
+            <a href="{{ url_for('export_quiz_csv', quiz_id=quiz.id) }}" class="btn btn-success me-2">
+                Download Detailed Result
+            </a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        </div>
+    </div>
 
 <!-- Leaderboard Section -->
 <div class="card mb-4" id="leaderboard-container" style="padding: 1.5rem; background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);">
@@ -52,6 +57,7 @@
                     <th>Attempt #</th>
                     <th>Score</th>
                     <th>Result</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -72,6 +78,11 @@
                         {% else %}
                             <span class="badge badge-fail">FAIL</span>
                         {% endif %}
+                    </td>
+                    <td>
+                        <form action="{{ url_for('reset_user_attempts', quiz_id=quiz.id, employee_id=attempt.employee_id) }}" method="POST" onsubmit="return confirm('Are you sure you want to completely wipe ALL attempts for {{ attempt.user_name }}? This cannot be undone.');">
+                            <button type="submit" class="btn" style="background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">Reset User</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}

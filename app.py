@@ -1,7 +1,9 @@
 import os
 import random
+import csv
+import io
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, Response, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -114,6 +116,18 @@ def init_db():
                 FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
             )
         ''')
+
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS user_responses (
+                id {pk_syntax},
+                attempt_id INTEGER NOT NULL,
+                question_id INTEGER NOT NULL,
+                selected_option TEXT NOT NULL,
+                is_correct INTEGER NOT NULL,
+                FOREIGN KEY (attempt_id) REFERENCES attempts(id) ON DELETE CASCADE,
+                FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+            )
+        ''')
         
         if not is_pg:
             try:
@@ -157,6 +171,38 @@ def index():
     quizzes = cursor.fetchall()
     return render_template('index.html', quizzes=quizzes)
 
+@app.route('/api/check_attempts', methods=['GET'])
+def check_attempts():
+    employee_id = request.args.get('employee_id')
+    quiz_id = request.args.get('quiz_id')
+    if not employee_id or not quiz_id:
+        return jsonify({'error': 'Missing params'}), 400
+        
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT max_attempts FROM quizzes WHERE id = ?', (quiz_id,))
+    quiz = cursor.fetchone()
+    if not quiz:
+        return jsonify({'error': 'Quiz not found'}), 404
+        
+    cursor.execute(
+        'SELECT MAX(attempt_number) as max_attempt FROM attempts WHERE quiz_id = ? AND employee_id = ?',
+        (quiz_id, employee_id)
+    )
+    result = cursor.fetchone()
+    used_attempts = result['max_attempt'] if result and result['max_attempt'] else 0
+    max_attempts = quiz['max_attempts']
+    remaining = max(0, max_attempts - used_attempts)
+    blocked = used_attempts >= max_attempts
+    
+    return jsonify({
+        'used_attempts': used_attempts,
+        'max_attempts': max_attempts,
+        'remaining': remaining,
+        'blocked': blocked,
+        'next_attempt_number': used_attempts + 1
+    })
+
 @app.route('/quiz/start', methods=['POST'])
 def start_quiz():
     name = request.form.get('name')
@@ -173,13 +219,24 @@ def start_quiz():
     # Find the latest attempt for this user to increment attempt_number
     db = get_db()
     cursor = db.cursor()
+    
+    cursor.execute('SELECT max_attempts FROM quizzes WHERE id = ?', (quiz_id,))
+    quiz = cursor.fetchone()
+    if not quiz:
+        flash("Quiz not found.", "error")
+        return redirect(url_for('index'))
+
+    # Check maximum attempts using employee_id and lowercased name
     cursor.execute(
-        'SELECT MAX(attempt_number) as max_attempt FROM attempts WHERE quiz_id = ? AND employee_id = ?',
-        (quiz_id, employee_id)
+        'SELECT MAX(attempt_number) as max_attempt FROM attempts WHERE quiz_id = ? AND employee_id = ? AND LOWER(user_name) = LOWER(?)',
+        (quiz_id, employee_id, name)
     )
     result = cursor.fetchone()
     current_attempt = 1
     if result and result['max_attempt']:
+        if result['max_attempt'] >= quiz['max_attempts']:
+            flash("You have exhausted all your attempts for this quiz.", "error")
+            return redirect(url_for('index'))
         current_attempt = result['max_attempt'] + 1
     
     session[f'attempt_{quiz_id}'] = current_attempt
@@ -244,10 +301,13 @@ def submit_quiz(quiz_id):
         return redirect(url_for('index'))
 
     score = 0
+    responses_to_insert = []
     for q in questions:
         user_answer = request.form.get(f'question_{q["id"]}')
-        if user_answer and user_answer == q['correct_option']:
+        is_correct = 1 if user_answer and user_answer == q['correct_option'] else 0
+        if is_correct:
             score += 1
+        responses_to_insert.append((q['id'], user_answer or '', is_correct))
 
     percentage = (score / total_questions) * 100
     passed = 1 if percentage >= quiz['pass_percentage'] else 0
@@ -258,10 +318,25 @@ def submit_quiz(quiz_id):
     cursor.execute('SELECT COALESCE(MAX(quiz_attempt_id), 0) as max_id FROM attempts WHERE quiz_id = ?', (quiz_id,))
     quiz_attempt_id = cursor.fetchone()['max_id'] + 1
 
-    cursor.execute('''
+    query = '''
         INSERT INTO attempts (quiz_id, user_name, employee_id, score, total_questions, percentage, passed, attempt_number, quiz_attempt_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (quiz_id, session['user_name'], session['employee_id'], score, total_questions, percentage, passed, attempt_num, quiz_attempt_id))
+    '''
+    params = (quiz_id, session['user_name'], session['employee_id'], score, total_questions, percentage, passed, attempt_num, quiz_attempt_id)
+    
+    if db.is_postgres:
+        cursor.execute(query + ' RETURNING id', params)
+        attempt_pk = cursor.fetchone()['id']
+    else:
+        cursor.execute(query, params)
+        attempt_pk = cursor.cursor.lastrowid
+
+    for q_id, user_answer, is_correct in responses_to_insert:
+        cursor.execute('''
+            INSERT INTO user_responses (attempt_id, question_id, selected_option, is_correct)
+            VALUES (?, ?, ?, ?)
+        ''', (attempt_pk, q_id, user_answer, is_correct))
+
     db.commit()
 
     return render_template('result.html', quiz=quiz, score=score, total_questions=total_questions, percentage=percentage, passed=passed, attempt_num=attempt_num, max_attempts=quiz['max_attempts'])
@@ -278,6 +353,17 @@ def reattempt_quiz(quiz_id):
     if not quiz or not quiz['is_active']:
         flash("This quiz is no longer active.", "error")
         return redirect(url_for('index'))
+
+    # Enforce maximum attempts
+    cursor.execute(
+        'SELECT MAX(attempt_number) as max_attempt FROM attempts WHERE quiz_id = ? AND employee_id = ? AND LOWER(user_name) = LOWER(?)',
+        (quiz_id, session['employee_id'], session['user_name'])
+    )
+    result = cursor.fetchone()
+    if result and result['max_attempt']:
+        if result['max_attempt'] >= quiz['max_attempts']:
+            flash("You have exhausted all your attempts for this quiz.", "error")
+            return redirect(url_for('index'))
 
     # Increment attempt counter
     session[f'attempt_{quiz_id}'] = session.get(f'attempt_{quiz_id}', 1) + 1
@@ -401,6 +487,16 @@ def delete_quiz(quiz_id):
     flash("Quiz deleted successfully.", "success")
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/admin/quiz/<int:quiz_id>/reset/<employee_id>', methods=['POST'])
+@admin_required
+def reset_user_attempts(quiz_id, employee_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('DELETE FROM attempts WHERE quiz_id = ? AND employee_id = ?', (quiz_id, employee_id))
+    db.commit()
+    flash(f"All attempts for Employee {employee_id} have been reset.", "success")
+    return redirect(url_for('quiz_results', quiz_id=quiz_id))
+
 @app.route('/admin/quiz/<int:quiz_id>/results', methods=['GET'])
 @admin_required
 def quiz_results(quiz_id):
@@ -431,6 +527,127 @@ def quiz_results(quiz_id):
     leaderboard = cursor.fetchall()
     
     return render_template('admin/results.html', quiz=quiz, attempts=attempts, leaderboard=leaderboard)
+
+@app.route('/admin/quiz/<int:quiz_id>/export_csv', methods=['GET'])
+@admin_required
+def export_quiz_csv(quiz_id):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('SELECT * FROM quizzes WHERE id = ?', (quiz_id,))
+    quiz = cursor.fetchone()
+    if not quiz:
+        return redirect(url_for('admin_dashboard'))
+        
+    cursor.execute('SELECT * FROM questions WHERE quiz_id = ? ORDER BY id', (quiz_id,))
+    questions = cursor.fetchall()
+    
+    cursor.execute('SELECT * FROM attempts WHERE quiz_id = ? ORDER BY employee_id, attempt_number', (quiz_id,))
+    attempts = cursor.fetchall()
+    
+    # Fetch all responses for this quiz
+    cursor.execute('''
+        SELECT r.* FROM user_responses r 
+        JOIN attempts a ON r.attempt_id = a.id 
+        WHERE a.quiz_id = ?
+    ''', (quiz_id,))
+    responses = cursor.fetchall()
+    
+    # Group responses by attempt_id and question_id
+    resp_dict = {} 
+    for r in responses:
+        aid = r['attempt_id']
+        qid = r['question_id']
+        if aid not in resp_dict: resp_dict[aid] = {}
+        resp_dict[aid][qid] = r['selected_option']
+        
+    # Group attempts by employee_id
+    users_data = {} 
+    for a in attempts:
+        eid = a['employee_id']
+        if eid not in users_data:
+            users_data[eid] = {'name': a['user_name'], 'attempts': {}}
+        users_data[eid]['attempts'][a['attempt_number']] = a
+
+    # Build CSV
+    max_attempts_found = quiz['max_attempts']
+    
+    header = ['Name', 'Employee ID', 'Question', 'Actual Answer']
+    for i in range(1, max_attempts_found + 1):
+        header.append(f'User Answer (Attempt {i})')
+        header.append(f'Attempt {i} Result')
+        
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(header)
+    
+    for eid, udata in users_data.items():
+        name = udata['name']
+        atts = udata['attempts']
+        
+        first_row = True
+        
+        # One row per question for this user
+        for q in questions:
+            row_name = name if first_row else ""
+            row_eid = eid if first_row else ""
+            row = [row_name, row_eid, q['question_text']]
+            first_row = False
+            
+            def get_opt_text(opt_letter):
+                if opt_letter == 'A': return q['option_a']
+                if opt_letter == 'B': return q['option_b']
+                if opt_letter == 'C': return q['option_c']
+                if opt_letter == 'D': return q['option_d']
+                return ''
+                
+            actual_ans_text = f"{q['correct_option']}: {get_opt_text(q['correct_option'])}"
+            row.append(actual_ans_text)
+            
+            for i in range(1, max_attempts_found + 1):
+                if i in atts:
+                    att = atts[i]
+                    
+                    ans_letter = resp_dict.get(att['id'], {}).get(q['id'], '')
+                    if ans_letter:
+                        ans_text = f"{ans_letter}: {get_opt_text(ans_letter)}"
+                        if ans_letter == q['correct_option']:
+                            result_text = "Correct"
+                        else:
+                            result_text = "Wrong"
+                    else:
+                        ans_text = "N/A (Old Data/Skipped)"
+                        result_text = "N/A"
+                        
+                    row.append(ans_text)
+                    row.append(result_text)
+                else:
+                    row.append("Did not attempt")
+                    row.append("N/A")
+                    
+            cw.writerow(row)
+            
+        # Append the FINAL SCORE summary row for this user
+        summary_row = ["", "", "FINAL SCORE", ""]
+        for i in range(1, max_attempts_found + 1):
+            if i in atts:
+                att = atts[i]
+                summary_row.append("") # Empty for User Answer
+                summary_row.append(f"{att['percentage']:.2f}%")
+            else:
+                summary_row.append("")
+                summary_row.append("N/A")
+        cw.writerow(summary_row)
+        
+        # Add a blank row to separate users
+        cw.writerow([])
+            
+    output = si.getvalue()
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename=quiz_{quiz_id}_detailed_results.csv"}
+    )
 
 if __name__ == '__main__':
     init_db()

@@ -33,7 +33,71 @@
             {% endif %}
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block mt-4" {% if not quizzes %}disabled{% endif %}>Start Quiz</button>
+        <div id="attempt-status" style="display: none; padding: 10px; border-radius: 4px; margin-top: 15px; font-weight: bold; text-align: center; transition: all 0.3s;"></div>
+
+        <button type="submit" id="start-btn" class="btn btn-primary btn-block mt-4" {% if not quizzes %}disabled{% endif %}>Start Quiz</button>
     </form>
 </div>
+
+<script>
+    const empInput = document.getElementById('employee_id');
+    const quizSelect = document.getElementById('quiz_id');
+    const statusDiv = document.getElementById('attempt-status');
+    const startBtn = document.getElementById('start-btn');
+    const hasQuizzes = {{ 'true' if quizzes else 'false' }};
+
+    function checkAttempts() {
+        const empId = empInput.value.trim();
+        const quizId = quizSelect.value;
+
+        if (empId && quizId) {
+            fetch(`/api/check_attempts?employee_id=${encodeURIComponent(empId)}&quiz_id=${encodeURIComponent(quizId)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) return;
+
+                    statusDiv.style.display = 'block';
+
+                    if (data.blocked) {
+                        statusDiv.style.backgroundColor = '#f8d7da';
+                        statusDiv.style.color = '#721c24';
+                        statusDiv.style.border = '1px solid #f5c6cb';
+                        statusDiv.innerHTML = `🚫 Access Denied: You have exhausted all ${data.max_attempts} attempts.`;
+                        startBtn.disabled = true;
+                    } else {
+                        startBtn.disabled = false;
+                        if (data.remaining === 1) {
+                            statusDiv.style.backgroundColor = '#fff3cd';
+                            statusDiv.style.color = '#856404';
+                            statusDiv.style.border = '1px solid #ffeeba';
+                            statusDiv.innerHTML = `⚠️ Warning: This is your final attempt! (Attempt ${data.next_attempt_number} of ${data.max_attempts})`;
+                        } else {
+                            statusDiv.style.backgroundColor = '#d4edda';
+                            statusDiv.style.color = '#155724';
+                            statusDiv.style.border = '1px solid #c3e6cb';
+                            statusDiv.innerHTML = `✅ This will be attempt ${data.next_attempt_number} of ${data.max_attempts} (${data.remaining} remaining).`;
+                        }
+                    }
+                })
+                .catch(err => console.error('Error checking attempts:', err));
+        } else {
+            statusDiv.style.display = 'none';
+            if (hasQuizzes) {
+                startBtn.disabled = false;
+            }
+        }
+    }
+
+    // Debounce typing slightly so we don't spam the API on every single keystroke
+    let typingTimer;
+    empInput.addEventListener('input', () => {
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(checkAttempts, 300);
+    });
+    
+    quizSelect.addEventListener('change', checkAttempts);
+
+    // Check immediately on load if fields are prefilled
+    document.addEventListener('DOMContentLoaded', checkAttempts);
+</script>
 {% endblock %}
