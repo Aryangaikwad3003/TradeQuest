@@ -6,9 +6,13 @@
 <!-- Audio & Animation Assets -->
 <audio id="bgMusic" src="{{ url_for('static', filename='new_bgmusic.mp3') }}" loop autoplay></audio>
 <audio id="yaySound" src="{{ url_for('static', filename='yay.mp3') }}"></audio>
+<audio id="wrongSound" src="{{ url_for('static', filename='wrong-buzzer.mp3') }}"></audio>
 
 <div id="hoorayAnimation" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none;">
     <img src="{{ url_for('static', filename='Hooray animation.svg') }}" style="width: 400px; height: 400px; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.2));">
+</div>
+<div id="wrongAnimation" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none;">
+    <img src="{{ url_for('static', filename='Wrong animation.gif') }}" style="width: 400px; height: 400px; filter: drop-shadow(0px 10px 20px rgba(0,0,0,0.2));">
 </div>
 
 <div class="flex justify-between items-center mb-2">
@@ -107,6 +111,19 @@
         } else {
             feedback.style.color = '#dc3545'; // danger
             feedback.innerText = 'Incorrect!';
+            
+            // Play Wrong sound and show animation
+            const wrongSound = document.getElementById('wrongSound');
+            wrongSound.currentTime = 0;
+            wrongSound.play().catch(e => console.log('Audio blocked:', e));
+            
+            const wAnim = document.getElementById('wrongAnimation');
+            wAnim.style.display = 'block';
+            
+            // Hide the animation after 2.5 seconds
+            setTimeout(() => {
+                wAnim.style.display = 'none';
+            }, 2500);
             
             // Highlight the correct option
             const correctLabel = document.getElementById('label_' + index + '_' + correctValue);

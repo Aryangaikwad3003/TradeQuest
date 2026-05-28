@@ -2,9 +2,10 @@ import os
 import random
 import csv
 import io
+import openpyxl
 from functools import wraps
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, Response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, Response, jsonify, send_file
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -549,9 +550,9 @@ def quiz_results(quiz_id):
     
     return render_template('admin/results.html', quiz=quiz, attempts=attempts, leaderboard=leaderboard)
 
-@app.route('/admin/quiz/<int:quiz_id>/export_csv', methods=['GET'])
+@app.route('/admin/quiz/<int:quiz_id>/export_excel', methods=['GET'])
 @admin_required
-def export_quiz_csv(quiz_id):
+def export_quiz_excel(quiz_id):
     db = get_db()
     cursor = db.cursor()
     
@@ -590,25 +591,23 @@ def export_quiz_csv(quiz_id):
             users_data[eid] = {'name': a['user_name'], 'attempts': {}}
         users_data[eid]['attempts'][a['attempt_number']] = a
 
-    # Build CSV
     max_attempts_found = quiz['max_attempts']
     
-    header = ['Name', 'Employee ID', 'Question', 'Actual Answer']
+    wb = openpyxl.Workbook()
+    ws_detailed = wb.active
+    ws_detailed.title = "Detailed Results"
+    
+    # Build Detailed Results Sheet
+    det_header = ['Name', 'Employee ID', 'Question', 'Actual Answer']
     for i in range(1, max_attempts_found + 1):
-        header.append(f'User Answer (Attempt {i})')
-        header.append(f'Attempt {i} Result')
-        
-    si = io.StringIO()
-    cw = csv.writer(si)
-    cw.writerow(header)
+        det_header.append(f'User Answer (Attempt {i})')
+        det_header.append(f'Attempt {i} Result')
+    ws_detailed.append(det_header)
     
     for eid, udata in users_data.items():
         name = udata['name']
         atts = udata['attempts']
-        
         first_row = True
-        
-        # One row per question for this user
         for q in questions:
             row_name = name if first_row else ""
             row_eid = eid if first_row else ""
@@ -628,46 +627,57 @@ def export_quiz_csv(quiz_id):
             for i in range(1, max_attempts_found + 1):
                 if i in atts:
                     att = atts[i]
-                    
                     ans_letter = resp_dict.get(att['id'], {}).get(q['id'], '')
                     if ans_letter:
                         ans_text = f"{ans_letter}: {get_opt_text(ans_letter)}"
-                        if ans_letter == q['correct_option']:
-                            result_text = "Correct"
-                        else:
-                            result_text = "Wrong"
+                        result_text = "Correct" if ans_letter == q['correct_option'] else "Wrong"
                     else:
                         ans_text = "N/A (Old Data/Skipped)"
                         result_text = "N/A"
-                        
                     row.append(ans_text)
                     row.append(result_text)
                 else:
                     row.append("Did not attempt")
                     row.append("N/A")
-                    
-            cw.writerow(row)
+            ws_detailed.append(row)
             
-        # Append the FINAL SCORE summary row for this user
         summary_row = ["", "", "FINAL SCORE", ""]
         for i in range(1, max_attempts_found + 1):
             if i in atts:
-                att = atts[i]
-                summary_row.append("") # Empty for User Answer
-                summary_row.append(f"{att['percentage']:.2f}%")
+                summary_row.append("")
+                summary_row.append(f"{atts[i]['percentage']:.2f}%")
             else:
                 summary_row.append("")
                 summary_row.append("N/A")
-        cw.writerow(summary_row)
+        ws_detailed.append(summary_row)
+        ws_detailed.append([])
         
-        # Add a blank row to separate users
-        cw.writerow([])
-            
-    output = si.getvalue()
-    return Response(
+    # Build Summary Sheet
+    ws_summary = wb.create_sheet(title="Summary")
+    sum_header = ['Name', 'Employee ID']
+    for i in range(1, max_attempts_found + 1):
+        sum_header.append(f'Attempt {i} Score (%)')
+    ws_summary.append(sum_header)
+    
+    for eid, udata in users_data.items():
+        row = [udata['name'], eid]
+        atts = udata['attempts']
+        for i in range(1, max_attempts_found + 1):
+            if i in atts:
+                row.append(f"{atts[i]['percentage']:.2f}%")
+            else:
+                row.append("N/A")
+        ws_summary.append(row)
+        
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return send_file(
         output,
-        mimetype="text/csv",
-        headers={"Content-disposition": f"attachment; filename=quiz_{quiz_id}_detailed_results.csv"}
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f"quiz_{quiz_id}_results.xlsx"
     )
 
 if __name__ == '__main__':
