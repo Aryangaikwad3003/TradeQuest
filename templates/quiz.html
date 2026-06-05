@@ -125,11 +125,23 @@
                 wAnim.style.display = 'none';
             }, 2500);
             
-            // Highlight the correct option
-            const correctLabel = document.getElementById('label_' + index + '_' + correctValue);
-            if (correctLabel) {
-                correctLabel.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
-                correctLabel.style.border = '1px solid #28a745';
+            // Highlight the correct option and style the rest
+            const optionsGroup = document.getElementById('options_' + index);
+            if (optionsGroup) {
+                const labels = optionsGroup.getElementsByTagName('label');
+                for(let i=0; i<labels.length; i++) {
+                    if (labels[i].id === 'label_' + index + '_' + correctValue) {
+                        labels[i].style.backgroundColor = '#c3e6cb';
+                        labels[i].style.border = '2px solid #155724';
+                        labels[i].style.color = '#155724';
+                        labels[i].style.fontWeight = 'bold';
+                    } else if (labels[i].querySelector('input').checked) {
+                        labels[i].style.backgroundColor = '#f8d7da';
+                        labels[i].style.border = '2px solid #dc3545';
+                    } else {
+                        labels[i].style.opacity = '0.6';
+                    }
+                }
             }
         }
     }

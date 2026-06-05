@@ -138,14 +138,14 @@ select:focus {
 
 .btn {
   display: inline-block;
-  padding: 0.75rem 1.5rem;
+  padding: 1rem 2rem;
   border-radius: 8px;
   font-weight: 600;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
   border: none;
-  font-size: 1rem;
+  font-size: 1.15rem;
   transition: all 0.2s ease;
 }
 
@@ -250,9 +250,9 @@ tr:hover {
 }
 
 .question-text {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
 }
 
 .options-group {
@@ -264,9 +264,10 @@ tr:hover {
 .option-label {
   display: flex;
   align-items: center;
-  padding: 1rem;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  padding: 1.25rem;
+  font-size: 1.15rem;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   background-color: var(--surface-color);
@@ -278,8 +279,9 @@ tr:hover {
 }
 
 .option-label input[type="radio"] {
-  margin-right: 1rem;
-  width: auto;
+  margin-right: 1.25rem;
+  width: 24px;
+  height: 24px;
   accent-color: var(--primary-color);
 }
 
