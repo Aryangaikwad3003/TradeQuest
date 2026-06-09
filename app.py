@@ -485,6 +485,78 @@ def manage_questions(quiz_id):
     
     return render_template('admin/questions.html', quiz=quiz, questions=existing_questions)
 
+@app.route('/admin/quiz/<int:quiz_id>/update_pass_percentage', methods=['POST'])
+@admin_required
+def update_pass_percentage(quiz_id):
+    db = get_db()
+    cursor = db.cursor()
+    new_pct = request.form.get('pass_percentage')
+    if new_pct is not None:
+        try:
+            val = float(new_pct)
+            if 0 <= val <= 100:
+                cursor.execute('UPDATE quizzes SET pass_percentage = ? WHERE id = ?', (val, quiz_id))
+                db.commit()
+                flash("Passing percentage updated.", "success")
+            else:
+                flash("Percentage must be between 0 and 100.", "error")
+        except ValueError:
+            flash("Invalid percentage value.", "error")
+    return redirect(url_for('manage_questions', quiz_id=quiz_id))
+
+@app.route('/admin/question/<int:question_id>/edit', methods=['POST'])
+@admin_required
+def edit_question(question_id):
+    db = get_db()
+    cursor = db.cursor()
+    q_text = request.form.get('question_text')
+    opt_a = request.form.get('option_a')
+    opt_b = request.form.get('option_b')
+    opt_c = request.form.get('option_c')
+    opt_d = request.form.get('option_d')
+    correct = request.form.get('correct_option')
+    
+    cursor.execute('SELECT quiz_id FROM questions WHERE id = ?', (question_id,))
+    q_row = cursor.fetchone()
+    if not q_row:
+        flash("Question not found.", "error")
+        return redirect(url_for('admin_dashboard'))
+        
+    quiz_id = q_row['quiz_id']
+    
+    if q_text and opt_a and opt_b and opt_c and opt_d and correct:
+        cursor.execute('''
+            UPDATE questions 
+            SET question_text = ?, option_a = ?, option_b = ?, option_c = ?, option_d = ?, correct_option = ?
+            WHERE id = ?
+        ''', (q_text.strip(), opt_a.strip(), opt_b.strip(), opt_c.strip(), opt_d.strip(), correct.strip(), question_id))
+        db.commit()
+        flash("Question updated successfully.", "success")
+    else:
+        flash("All fields are required.", "error")
+        
+    return redirect(url_for('manage_questions', quiz_id=quiz_id))
+
+@app.route('/admin/question/<int:question_id>/delete', methods=['POST'])
+@admin_required
+def delete_question(question_id):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('SELECT quiz_id FROM questions WHERE id = ?', (question_id,))
+    q_row = cursor.fetchone()
+    if not q_row:
+        return redirect(url_for('admin_dashboard'))
+        
+    quiz_id = q_row['quiz_id']
+    
+    cursor.execute('DELETE FROM user_responses WHERE question_id = ?', (question_id,))
+    cursor.execute('DELETE FROM questions WHERE id = ?', (question_id,))
+    db.commit()
+    
+    flash("Question deleted successfully.", "success")
+    return redirect(url_for('manage_questions', quiz_id=quiz_id))
+
 @app.route('/admin/quiz/<int:quiz_id>/toggle', methods=['POST'])
 @admin_required
 def toggle_quiz(quiz_id):
