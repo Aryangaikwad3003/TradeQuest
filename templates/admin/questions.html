@@ -8,11 +8,17 @@
     <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
 </div>
 
-<!-- Pass Percentage -->
-<div class="card mb-4" style="padding: 1.5rem;">
+<!-- Settings -->
+<div class="card mb-4" style="padding: 1.5rem; display: flex; flex-wrap: wrap; gap: 2rem;">
     <form action="{{ url_for('update_pass_percentage', quiz_id=quiz.id) }}" method="POST" style="display: flex; align-items: center; gap: 1rem;">
         <label style="margin: 0; font-weight: 600;">Passing Percentage:</label>
         <input type="number" name="pass_percentage" value="{{ quiz.pass_percentage }}" min="0" max="100" step="0.1" style="width: 100px; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color);">
+        <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem;">Update</button>
+    </form>
+
+    <form action="{{ url_for('update_time_limit', quiz_id=quiz.id) }}" method="POST" style="display: flex; align-items: center; gap: 1rem;">
+        <label style="margin: 0; font-weight: 600;">Time Limit (sec):</label>
+        <input type="number" name="time_limit" value="{{ quiz.time_limit }}" min="5" step="1" style="width: 100px; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color);">
         <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem;">Update</button>
     </form>
 </div>

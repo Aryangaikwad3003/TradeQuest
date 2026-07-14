@@ -84,6 +84,7 @@ def init_db():
                 pass_percentage REAL NOT NULL,
                 is_active INTEGER DEFAULT 0,
                 max_attempts INTEGER DEFAULT 3,
+                time_limit INTEGER DEFAULT 60,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -141,6 +142,16 @@ def init_db():
                 cursor.cursor.execute('ALTER TABLE attempts ADD COLUMN quiz_attempt_id INTEGER')
             except Exception:
                 pass
+
+            try:
+                cursor.cursor.execute('ALTER TABLE quizzes ADD COLUMN time_limit INTEGER DEFAULT 60')
+            except Exception:
+                pass
+        else:
+            cursor.execute('ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 3')
+            cursor.execute('ALTER TABLE attempts ADD COLUMN IF NOT EXISTS quiz_attempt_id INTEGER')
+            cursor.execute('ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS time_limit INTEGER DEFAULT 60')
+
 
         # Backfill quiz_attempt_id for existing attempts
         cursor.execute('SELECT id, quiz_id FROM attempts WHERE quiz_attempt_id IS NULL ORDER BY timestamp ASC, id ASC')
@@ -434,10 +445,11 @@ def create_quiz():
         title = request.form.get('title')
         pass_percentage = request.form.get('pass_percentage')
         max_attempts = request.form.get('max_attempts')
-        if title and pass_percentage and max_attempts:
+        time_limit = request.form.get('time_limit')
+        if title and pass_percentage and max_attempts and time_limit:
             db = get_db()
             cursor = db.cursor()
-            cursor.execute('INSERT INTO quizzes (title, pass_percentage, is_active, max_attempts) VALUES (?, ?, 0, ?)', (title, pass_percentage, max_attempts))
+            cursor.execute('INSERT INTO quizzes (title, pass_percentage, is_active, max_attempts, time_limit) VALUES (?, ?, 0, ?, ?)', (title, pass_percentage, max_attempts, time_limit))
             db.commit()
             return redirect(url_for('admin_dashboard'))
         else:
@@ -502,6 +514,25 @@ def update_pass_percentage(quiz_id):
                 flash("Percentage must be between 0 and 100.", "error")
         except ValueError:
             flash("Invalid percentage value.", "error")
+    return redirect(url_for('manage_questions', quiz_id=quiz_id))
+
+@app.route('/admin/quiz/<int:quiz_id>/update_time_limit', methods=['POST'])
+@admin_required
+def update_time_limit(quiz_id):
+    db = get_db()
+    cursor = db.cursor()
+    new_limit = request.form.get('time_limit')
+    if new_limit is not None:
+        try:
+            val = int(new_limit)
+            if val > 0:
+                cursor.execute('UPDATE quizzes SET time_limit = ? WHERE id = ?', (val, quiz_id))
+                db.commit()
+                flash("Time limit updated.", "success")
+            else:
+                flash("Time limit must be a positive integer.", "error")
+        except ValueError:
+            flash("Invalid time limit value.", "error")
     return redirect(url_for('manage_questions', quiz_id=quiz_id))
 
 @app.route('/admin/question/<int:question_id>/edit', methods=['POST'])

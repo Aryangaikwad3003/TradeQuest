@@ -27,7 +27,12 @@
     {% for q in questions %}
     {% set outer_idx = loop.index0 %}
     <div class="card question-block" id="question_{{ outer_idx }}" {% if not loop.first %}style="display: none;"{% endif %}>
-        <div class="question-text">{{ loop.index }}. {{ q.question_text }}</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div class="question-text">{{ loop.index }}. {{ q.question_text }}</div>
+            <div class="timer-display" id="timer_{{ outer_idx }}" style="font-size: 1.25rem; font-weight: bold; color: var(--danger-color); background: #ffebeb; padding: 0.25rem 0.75rem; border-radius: 8px; border: 1px solid var(--danger-color); white-space: nowrap;">
+                ⏳ <span class="time-left">{{ quiz.time_limit|default(60) }}</span>s
+            </div>
+        </div>
         
         <div class="options-group" id="options_{{ outer_idx }}">
             {% for orig_key, text in q.shuffled_options %}
@@ -56,6 +61,84 @@
 
 <script>
     const totalQuestions = {{ questions|length }};
+    const timeLimit = {{ quiz.time_limit|default(60) }};
+    let timerInterval = null;
+    let timeRemaining = timeLimit;
+
+    function startTimer(index) {
+        clearInterval(timerInterval);
+        timeRemaining = timeLimit;
+        updateTimerDisplay(index);
+
+        timerInterval = setInterval(() => {
+            timeRemaining--;
+            updateTimerDisplay(index);
+
+            if (timeRemaining <= 0) {
+                clearInterval(timerInterval);
+                handleTimeout(index);
+            }
+        }, 1000);
+    }
+
+    function updateTimerDisplay(index) {
+        const timerSpan = document.querySelector('#timer_' + index + ' .time-left');
+        if (timerSpan) {
+            timerSpan.textContent = timeRemaining;
+        }
+    }
+
+    function handleTimeout(index) {
+        const block = document.getElementById('question_' + index);
+        const inputs = block.querySelectorAll('input[type="radio"]');
+        
+        inputs.forEach(input => input.disabled = true);
+        
+        const checkBtn = block.querySelector('.check-btn');
+        const nextBtn = block.querySelector('.next-btn');
+        const submitBtn = block.querySelector('.submit-btn');
+        const feedback = document.getElementById('feedback_' + index);
+        
+        checkBtn.style.display = 'none';
+        
+        if (index === totalQuestions - 1) {
+            if (submitBtn) submitBtn.style.display = 'inline-block';
+        } else {
+            nextBtn.style.display = 'inline-block';
+        }
+
+        let correctValue = null;
+        if (inputs.length > 0) {
+            correctValue = inputs[0].getAttribute('data-correct');
+        }
+
+        feedback.style.display = 'block';
+        feedback.style.color = '#dc3545';
+        feedback.innerText = 'Time is up! Incorrect.';
+        
+        const wrongSound = document.getElementById('wrongSound');
+        wrongSound.currentTime = 0;
+        wrongSound.play().catch(e => console.log('Audio blocked:', e));
+        
+        const wAnim = document.getElementById('wrongAnimation');
+        wAnim.style.display = 'block';
+        setTimeout(() => { wAnim.style.display = 'none'; }, 2500);
+
+        const optionsGroup = document.getElementById('options_' + index);
+        if (optionsGroup && correctValue) {
+            const labels = optionsGroup.getElementsByTagName('label');
+            for(let i=0; i<labels.length; i++) {
+                if (labels[i].id === 'label_' + index + '_' + correctValue) {
+                    labels[i].style.backgroundColor = '#c3e6cb';
+                    labels[i].style.border = '2px solid #155724';
+                    labels[i].style.color = '#155724';
+                    labels[i].style.fontWeight = 'bold';
+                } else {
+                    labels[i].style.opacity = '0.6';
+                }
+            }
+        }
+    }
     
     function checkAnswer(index) {
         const block = document.getElementById('question_' + index);
@@ -80,6 +163,9 @@
 
         // Disable inputs so they can't change their answer
         inputs.forEach(input => input.disabled = true);
+        
+        // Stop timer
+        clearInterval(timerInterval);
         
         checkBtn.style.display = 'none';
         
@@ -152,8 +238,16 @@
         const nextBlock = document.getElementById('question_' + nextIndex);
         if (nextBlock) {
             nextBlock.style.display = 'block';
+            startTimer(nextIndex);
         }
     }
+
+    // Start timer for the first question when page loads
+    window.addEventListener('DOMContentLoaded', (event) => {
+        if (totalQuestions > 0) {
+            startTimer(0);
+        }
+    });
 
     // Re-enable inputs before submitting so the data is sent
     document.getElementById('quizForm').addEventListener('submit', function() {
