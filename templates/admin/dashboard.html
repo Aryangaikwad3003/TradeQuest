@@ -3,9 +3,12 @@
 {% block title %}TradeQuest - Admin Dashboard{% endblock %}
 
 {% block content %}
-<div class="flex justify-between items-center mb-2">
-    <h2>Quiz Management Dashboard</h2>
-    <a href="{{ url_for('create_quiz') }}" class="btn btn-primary">+ Create New Quiz</a>
+<div class="flex justify-between items-center mb-2" style="flex-wrap: wrap; gap: 1rem;">
+    <h2 style="margin: 0;">Quiz Management Dashboard</h2>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('manage_agents') }}" class="btn btn-secondary">Manage Agents</a>
+        <a href="{{ url_for('create_quiz') }}" class="btn btn-primary">+ Create New Quiz</a>
+    </div>
 </div>
 
 <div class="card" style="padding: 1.5rem;">
@@ -41,11 +44,12 @@
                         </form>
                     </td>
                     <td>
-                        <div class="action-buttons">
-                            <a href="{{ url_for('manage_questions', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Edit/Add Questions</a>
-                            <a href="{{ url_for('quiz_results', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">View Results</a>
-                            <form action="{{ url_for('delete_quiz', quiz_id=quiz.id) }}" method="POST" style="margin:0; display:inline;">
-                                <button type="submit" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Delete</button>
+                        <div class="action-buttons" style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start;">
+                            <a href="{{ url_for('manage_questions', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; white-space: nowrap;">Edit Questions</a>
+                            <a href="{{ url_for('quiz_agents', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; white-space: nowrap;">Assign Agents</a>
+                            <a href="{{ url_for('quiz_results', quiz_id=quiz.id) }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; white-space: nowrap;">View Results</a>
+                            <form action="{{ url_for('delete_quiz', quiz_id=quiz.id) }}" method="POST" style="margin:0;">
+                                <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; white-space: nowrap;">Delete</button>
                             </form>
                         </div>
                     </td>

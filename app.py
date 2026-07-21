@@ -132,6 +132,24 @@ def init_db():
             )
         ''')
         
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS agents (
+                id {pk_syntax},
+                full_name TEXT NOT NULL,
+                employee_id TEXT NOT NULL UNIQUE
+            )
+        ''')
+        
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS quiz_agents (
+                quiz_id INTEGER NOT NULL,
+                agent_id INTEGER NOT NULL,
+                PRIMARY KEY (quiz_id, agent_id),
+                FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+                FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+            )
+        ''')
+        
         if not is_pg:
             try:
                 cursor.cursor.execute('ALTER TABLE quizzes ADD COLUMN max_attempts INTEGER DEFAULT 3')
@@ -204,6 +222,20 @@ def index():
     quizzes = cursor.fetchall()
     return render_template('index.html', quizzes=quizzes)
 
+@app.route('/api/quiz/<int:quiz_id>/agents', methods=['GET'])
+def get_quiz_agents(quiz_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        SELECT a.full_name, a.employee_id 
+        FROM agents a
+        JOIN quiz_agents qa ON a.id = qa.agent_id
+        WHERE qa.quiz_id = ?
+        ORDER BY a.full_name ASC
+    ''', (quiz_id,))
+    agents = cursor.fetchall()
+    return jsonify([dict(row) for row in agents])
+
 @app.route('/api/check_attempts', methods=['GET'])
 def check_attempts():
     employee_id = request.args.get('employee_id')
@@ -272,6 +304,28 @@ def start_quiz():
             return redirect(url_for('index'))
         current_attempt = result['max_attempt'] + 1
     
+    # Determine the quiz_attempt_id
+    cursor.execute('SELECT COALESCE(MAX(quiz_attempt_id), 0) as max_id FROM attempts WHERE quiz_id = ?', (quiz_id,))
+    quiz_attempt_id = cursor.fetchone()['max_id'] + 1
+
+    # Record the attempt immediately with score=0, percentage=0, passed=0
+    query = '''
+        INSERT INTO attempts (quiz_id, user_name, employee_id, score, total_questions, percentage, passed, attempt_number, quiz_attempt_id)
+        VALUES (?, ?, ?, 0, 0, 0, 0, ?, ?)
+    '''
+    params = (quiz_id, name, employee_id, current_attempt, quiz_attempt_id)
+    
+    if db.is_postgres:
+        cursor.execute(query + ' RETURNING id', params)
+        attempt_pk = cursor.fetchone()['id']
+    else:
+        cursor.execute(query, params)
+        attempt_pk = cursor.cursor.lastrowid
+        
+    db.commit()
+
+    # Save the primary key of this attempt in the session
+    session[f'attempt_pk_{quiz_id}'] = attempt_pk
     session[f'attempt_{quiz_id}'] = current_attempt
 
     return redirect(url_for('quiz_page', quiz_id=quiz_id))
@@ -342,27 +396,23 @@ def submit_quiz(quiz_id):
             score += 1
         responses_to_insert.append((q['id'], user_answer or '', is_correct))
 
+    # Ensure the attempt was started properly
+    attempt_pk = session.get(f'attempt_pk_{quiz_id}')
+    if not attempt_pk:
+        flash("Attempt session expired or invalid. Please start again.", "error")
+        return redirect(url_for('index'))
+
     percentage = (score / total_questions) * 100
     passed = 1 if percentage >= quiz['pass_percentage'] else 0
     
     attempt_num = session.get(f'attempt_{quiz_id}', 1)
 
-    # Determine the quiz_attempt_id
-    cursor.execute('SELECT COALESCE(MAX(quiz_attempt_id), 0) as max_id FROM attempts WHERE quiz_id = ?', (quiz_id,))
-    quiz_attempt_id = cursor.fetchone()['max_id'] + 1
-
-    query = '''
-        INSERT INTO attempts (quiz_id, user_name, employee_id, score, total_questions, percentage, passed, attempt_number, quiz_attempt_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    '''
-    params = (quiz_id, session['user_name'], session['employee_id'], score, total_questions, percentage, passed, attempt_num, quiz_attempt_id)
-    
-    if db.is_postgres:
-        cursor.execute(query + ' RETURNING id', params)
-        attempt_pk = cursor.fetchone()['id']
-    else:
-        cursor.execute(query, params)
-        attempt_pk = cursor.cursor.lastrowid
+    # UPDATE the existing attempt record instead of inserting a new one
+    cursor.execute('''
+        UPDATE attempts 
+        SET score = ?, total_questions = ?, percentage = ?, passed = ?
+        WHERE id = ?
+    ''', (score, total_questions, percentage, passed, attempt_pk))
 
     for q_id, user_answer, is_correct in responses_to_insert:
         cursor.execute('''
@@ -371,6 +421,9 @@ def submit_quiz(quiz_id):
         ''', (attempt_pk, q_id, user_answer, is_correct))
 
     db.commit()
+    
+    # Clear the attempt PK from session so they can't submit it again
+    session.pop(f'attempt_pk_{quiz_id}', None)
 
     return render_template('result.html', quiz=quiz, score=score, total_questions=total_questions, percentage=percentage, passed=passed, attempt_num=attempt_num, max_attempts=quiz['max_attempts'])
 
@@ -437,6 +490,74 @@ def admin_dashboard():
     ''')
     quizzes = cursor.fetchall()
     return render_template('admin/dashboard.html', quizzes=quizzes)
+
+@app.route('/admin/agents', methods=['GET', 'POST'])
+@admin_required
+def manage_agents():
+    db = get_db()
+    cursor = db.cursor()
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            full_name = request.form.get('full_name')
+            employee_id = request.form.get('employee_id')
+            if full_name and employee_id:
+                try:
+                    cursor.execute('INSERT INTO agents (full_name, employee_id) VALUES (?, ?)', (full_name.strip(), employee_id.strip()))
+                    db.commit()
+                    flash("Agent added successfully.", "success")
+                except db.IntegrityError:
+                    flash("Employee ID already exists.", "error")
+        elif action == 'delete':
+            agent_id = request.form.get('agent_id')
+            cursor.execute('DELETE FROM agents WHERE id = ?', (agent_id,))
+            db.commit()
+            flash("Agent deleted successfully.", "success")
+            
+        return redirect(url_for('manage_agents'))
+
+    cursor.execute('SELECT * FROM agents ORDER BY full_name ASC')
+    agents = cursor.fetchall()
+    return render_template('admin/agents.html', agents=agents)
+
+@app.route('/admin/quiz/<int:quiz_id>/agents', methods=['GET', 'POST'])
+@admin_required
+def quiz_agents(quiz_id):
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('SELECT * FROM quizzes WHERE id = ?', (quiz_id,))
+    quiz = cursor.fetchone()
+    if not quiz:
+        return redirect(url_for('admin_dashboard'))
+
+    if request.method == 'POST':
+        # Get list of checked agent IDs
+        selected_agents = request.form.getlist('agent_ids')
+        
+        # Clear existing assignments for this quiz
+        cursor.execute('DELETE FROM quiz_agents WHERE quiz_id = ?', (quiz_id,))
+        
+        # Insert new assignments
+        for agent_id in selected_agents:
+            cursor.execute('INSERT INTO quiz_agents (quiz_id, agent_id) VALUES (?, ?)', (quiz_id, agent_id))
+            
+        db.commit()
+        flash("Quiz agents updated successfully.", "success")
+        return redirect(url_for('quiz_agents', quiz_id=quiz_id))
+
+    # Fetch all agents and check which ones are assigned to this quiz
+    cursor.execute('''
+        SELECT a.id, a.full_name, a.employee_id, 
+               CASE WHEN qa.quiz_id IS NOT NULL THEN 1 ELSE 0 END as is_assigned
+        FROM agents a
+        LEFT JOIN quiz_agents qa ON a.id = qa.agent_id AND qa.quiz_id = ?
+        ORDER BY a.full_name ASC
+    ''', (quiz_id,))
+    agents = cursor.fetchall()
+    
+    return render_template('admin/quiz_agents.html', quiz=quiz, agents=agents)
 
 @app.route('/admin/quiz/create', methods=['GET', 'POST'])
 @admin_required
