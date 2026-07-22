@@ -136,7 +136,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS agents (
                 id {pk_syntax},
                 full_name TEXT NOT NULL,
-                employee_id TEXT NOT NULL UNIQUE
+                employee_id TEXT NOT NULL UNIQUE,
+                team TEXT DEFAULT 'Unassigned'
             )
         ''')
         
@@ -165,10 +166,16 @@ def init_db():
                 cursor.cursor.execute('ALTER TABLE quizzes ADD COLUMN time_limit INTEGER DEFAULT 60')
             except Exception:
                 pass
+                
+            try:
+                cursor.cursor.execute("ALTER TABLE agents ADD COLUMN team TEXT DEFAULT 'Unassigned'")
+            except Exception:
+                pass
         else:
             cursor.execute('ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 3')
             cursor.execute('ALTER TABLE attempts ADD COLUMN IF NOT EXISTS quiz_attempt_id INTEGER')
             cursor.execute('ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS time_limit INTEGER DEFAULT 60')
+            cursor.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS team TEXT DEFAULT 'Unassigned'")
 
 
         # Backfill quiz_attempt_id for existing attempts
@@ -502,9 +509,10 @@ def manage_agents():
         if action == 'add':
             full_name = request.form.get('full_name')
             employee_id = request.form.get('employee_id')
+            team = request.form.get('team', 'Unassigned')
             if full_name and employee_id:
                 try:
-                    cursor.execute('INSERT INTO agents (full_name, employee_id) VALUES (?, ?)', (full_name.strip(), employee_id.strip()))
+                    cursor.execute('INSERT INTO agents (full_name, employee_id, team) VALUES (?, ?, ?)', (full_name.strip(), employee_id.strip(), team))
                     db.commit()
                     flash("Agent added successfully.", "success")
                 except db.IntegrityError:
@@ -514,6 +522,12 @@ def manage_agents():
             cursor.execute('DELETE FROM agents WHERE id = ?', (agent_id,))
             db.commit()
             flash("Agent deleted successfully.", "success")
+        elif action == 'update_team':
+            agent_id = request.form.get('agent_id')
+            new_team = request.form.get('team')
+            cursor.execute('UPDATE agents SET team = ? WHERE id = ?', (new_team, agent_id))
+            db.commit()
+            flash("Agent team updated successfully.", "success")
             
         return redirect(url_for('manage_agents'))
 
@@ -549,11 +563,11 @@ def quiz_agents(quiz_id):
 
     # Fetch all agents and check which ones are assigned to this quiz
     cursor.execute('''
-        SELECT a.id, a.full_name, a.employee_id, 
+        SELECT a.id, a.full_name, a.employee_id, a.team,
                CASE WHEN qa.quiz_id IS NOT NULL THEN 1 ELSE 0 END as is_assigned
         FROM agents a
         LEFT JOIN quiz_agents qa ON a.id = qa.agent_id AND qa.quiz_id = ?
-        ORDER BY a.full_name ASC
+        ORDER BY a.team ASC, a.full_name ASC
     ''', (quiz_id,))
     agents = cursor.fetchall()
     
